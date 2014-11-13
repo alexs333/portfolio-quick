@@ -1,0 +1,95 @@
+#!/usr/bin/env ruby
+
+require 'csv'
+require 'terminal-table'
+require_relative '../lib/portfolio_quick/portfolio'
+require_relative '../lib/portfolio_quick/stock'
+
+def print_help
+	puts ''
+	puts 'PortfolioQUICK - the quick command line portfolio viewer and organizer for Australian Stock Exchange (ASX).'
+	puts 'Uses the ASX stock data (20 min. delayed) if internet connection is available, otherwise falls back on local database of previous runs'
+	puts ''
+	puts 'USAGE:'
+	puts "\tportq [csv_file_path]\t\tthe path to CSV file with portfolio stock data"
+	puts "\tportq [argument]\t\tSee the arguments descriptions below"
+	puts "\tportq\t\t\t\tReads the file from CSV file specified in PORTQ_DATE environment variables or displays this option"
+	puts ''
+	puts 'DATA FORMAT:'
+	puts "\t<asx stock code>,<purchase price>,<quantity>"
+	puts "\t<asx stock code>,<purchase price>,<quantity>"
+	puts "\t..."
+	puts ''
+	puts 'ARGUMENTS:'
+	puts "\t-l ...... --local\t\tRead stock data from the local database"
+	puts "\t-h ...... --help\t\tDisplay this help"
+	puts "\t-c ...... --clear\t\tClears the local database"
+	puts ''
+end
+
+file_path = ''
+
+if ARGV.size > 1
+	puts 'Invalid number of arguments'
+	print_help
+	Kernel.exit true
+elsif ARGV.first == '-h' or ARGV.first == '--help'
+	print_help
+	Kernel.exit true
+elsif ARGV.first == '-l' or ARGV.first == '--local'
+	puts 'Connecting to the local database (TBC)'
+	Kernel.exit true
+elsif ARGV.first == '-c' or ARGV.first == '--clear'
+	puts 'Clearing local database (TBC)'
+	Kernel.exit true
+elsif ARGV.size == 1
+	file_path = ARGV.first
+end
+
+portfolio = PortfolioQuick::Portfolio.new
+begin
+	CSV.foreach(file_path) do |row|
+		stock = PortfolioQuick::Stock.new row
+		portfolio.stocks << stock
+	end
+rescue SocketError
+	puts 'no internet connection, exiting...'
+	Kernel.exit true
+rescue Errno::ENOENT
+	puts 'invalid file path (use -h or --help for usage instructions)'
+	Kernel.exit true
+end
+
+# draw table
+headings = ['code', 'purchase price', 'current price', 'quantity', 'day gain', 'day gain(%)', 'total gain', 'total gain(%)', 'relative value']
+
+portfolio_table = Terminal::Table.new headings: headings do |t|
+	portfolio.stocks.each do |stock|
+		stock_columns = []
+		stock_columns << stock.code
+		stock_columns << stock.purchase_price
+		stock_columns << stock.current_price
+		stock_columns << stock.quantity
+		stock_columns << stock.day_gain.round(2)
+		stock_columns << stock.day_percentage.round(1).to_s.concat('%')
+		stock_columns << stock.total_gain.round(2)
+		stock_columns << stock.percentage.round(1).to_s.concat('%')
+		stock_columns << portfolio.value_percentage_for(stock).round(1).to_s.concat('%')
+		t << stock_columns
+	end
+
+	t << :separator
+	portfolio_columns = []
+	portfolio_columns << ''
+	portfolio_columns << portfolio.purchase_price.round(2)
+	portfolio_columns << portfolio.current_price.round(2)
+	portfolio_columns << ''
+	portfolio_columns << portfolio.day_gain.round(2)
+	portfolio_columns << portfolio.day_percentage.round(1).to_s.concat('%')
+	portfolio_columns << portfolio.total_gain.round(2)
+	portfolio_columns << portfolio.percentage.round(1).to_s.concat('%')
+	portfolio_columns << ''
+	t << portfolio_columns
+end
+
+puts portfolio_table
